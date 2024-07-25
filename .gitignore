@@ -1,0 +1,15 @@
+__pycache__/
+logs/
+swap-pane
+*.pyc
+*.swp
+*.pkl
+*.mp4
+restats
+.ipynb_checkpoints/
+*.jpg
+*.png
+*.html
+*.obj
+*.eps
+*.csv
