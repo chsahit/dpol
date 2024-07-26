@@ -58,6 +58,8 @@ class PIHEnv(gym.Env):
         self.window_size = ws = 512  # The size of the PyGame window
         self.render_size = render_size
         self.sim_hz = 100
+        self.corners = None
+        self.corner_contact = False
         # Local controller params.
         self.k_p, self.k_v = 100, 20    # PD control.z
         self.control_hz = self.metadata['video.frames_per_second']
@@ -144,11 +146,12 @@ class PIHEnv(gym.Env):
         goal_geom = pymunk_to_shapely(goal_body, self.block.shapes)
         block_geom = pymunk_to_shapely(self.block, self.block.shapes)
 
+
         intersection_area = goal_geom.intersection(block_geom).area
         goal_area = goal_geom.area
         coverage = intersection_area / goal_area
         reward = np.clip(coverage / self.success_threshold, 0, 1)
-        done = coverage > self.success_threshold
+        done = self.corner_contact # coverage > self.success_threshold
         terminated = done
         truncated = done
 
@@ -264,6 +267,19 @@ class PIHEnv(gym.Env):
 
     def _handle_collision(self, arbiter, space, data):
         self.n_contact_points += len(arbiter.contact_point_set.points)
+        hole_pose = self.hole.position
+        hole_angle = self.hole.angle
+        rotated_corners = []
+        self.corner_contact = False
+        for corner in self.corners:
+            corner_local = pymunk.Vec2d(*corner).rotated(hole_angle)
+            corner_global = hole_pose + corner_local
+            rotated_corners.append(corner_global)
+
+        for pt in arbiter.contact_point_set.points:
+            for corner in rotated_corners:
+                if corner.get_distance(pt.point_a) < 5 or corner.get_distance(pt.point_b) < 5:
+                    self.corner_contact = True
 
     def _set_state(self, state):
         if isinstance(state, np.ndarray):
@@ -387,7 +403,8 @@ class PIHEnv(gym.Env):
         inertia2 = pymunk.moment_for_poly(mass, vertices=vertices2)
 
         bcenter = [position[0], position[1] - (length * scale /2)]
-        vertices3 = self.box_coords(bcenter, wall_w * scale, length * scale)
+        vertices3 = self.box_coords(bcenter, wall_w * scale, int(0.8 * length * scale))
+        self.corners = [vertices3[0], vertices3[1]]
         inertia3 = pymunk.moment_for_poly(mass, vertices=vertices3)
 
         body = pymunk.Body(mass, inertia1 + inertia2)
