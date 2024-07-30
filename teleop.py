@@ -24,10 +24,10 @@ def main(output, render_size, control_hz):
     Hold "Space" to pause.
     """
 
-    """
     # create replay buffer in read-write mode
     replay_buffer = ReplayBuffer.create_from_path(output, mode='a')
 
+    """
     # create PushT env with keypoints
     kp_kwargs = PushTKeypointsEnv.genenerate_keypoint_manager_params()
     env = PushTKeypointsEnv(render_size=render_size, render_action=False, **kp_kwargs)
@@ -35,13 +35,12 @@ def main(output, render_size, control_hz):
     env = PIHEnv()
     agent = env.teleop_agent()
     clock = pygame.time.Clock()
-    print("warning seed is hard coded")
 
     # episode-level while loop
     while True:
         episode = list()
         # record in seed order, starting with 0
-        seed = 0 # replay_buffer.n_episodes
+        seed = replay_buffer.n_episodes
         print(f'starting seed {seed}')
 
         # set seed for env
@@ -90,22 +89,28 @@ def main(output, render_size, control_hz):
             if not act is None:
                 # teleop started
                 # state dim 2+3
-                state = np.concatenate([info['pos_agent'], info['block_pose']])
+                # state = np.concatenate([info['pos_agent'], info['block_pose']])
                 # discard unused information such as visibility mask and agent pos
                 # for compatibility
                 # keypoint = obs.reshape(2,-1)[0].reshape(-1,2)[:9]
-                keypoint = None
-                data = {
-                    'img': img,
-                    'state': np.float32(state),
-                    'keypoint': np.float32(keypoint),
-                    'action': np.float32(act),
-                    'n_contacts': np.float32([info['n_contacts']])
-                }
-                episode.append(data)
+                keypoint = -1
+                if type(obs) == tuple:
+                    pass
+                else:
+                    data = {
+                        'img': img,
+                        'state': np.float32(obs),
+                        'keypoint': np.float32(keypoint),
+                        'action': np.float32(act),
+                        'n_contacts': np.float32([info['n_contacts']])
+                    }
+                    episode.append(data)
 
             # step env and render
             obs, reward, done, _, info = env.step(act)
+            if len(episode) == 0 and done:
+                print("0 step episode?")
+                done = False
             img = env.render(mode='human')
 
             # regulate control frequency
@@ -116,7 +121,7 @@ def main(output, render_size, control_hz):
             for key in episode[0].keys():
                 data_dict[key] = np.stack(
                     [x[key] for x in episode])
-            # replay_buffer.add_episode(data_dict, compressors='disk')
+            replay_buffer.add_episode(data_dict, compressors='disk')
             print(f'saved seed {seed}')
         else:
             print(f'retry seed {seed}')

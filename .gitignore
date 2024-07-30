@@ -13,3 +13,4 @@ restats
 *.obj
 *.eps
 *.csv
+buffer/

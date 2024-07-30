@@ -106,6 +106,7 @@ class PIHEnv(gym.Env):
     def reset(self):
         seed = self._seed
         self._setup()
+        self.corner_contact = False
         if self.block_cog is not None:
             self.block.center_of_gravity = self.block_cog
         if self.damping is not None:
@@ -178,7 +179,9 @@ class PIHEnv(gym.Env):
         obs = np.array(
             tuple(self.agent.position) \
             + tuple(self.block.position) \
-            + (self.block.angle % (2 * np.pi),))
+            + (self.block.angle % (2 * np.pi),) \
+            + tuple(self.hole.position) \
+            + (self.hole.angle % (2 * np.pi),))
         return obs
 
     def _get_goal_pose_body(self, pose):
