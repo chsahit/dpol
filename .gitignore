@@ -14,3 +14,4 @@ restats
 *.eps
 *.csv
 buffer/
+*.zip
