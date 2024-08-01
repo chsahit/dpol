@@ -26,10 +26,13 @@ import gdown
 import os
 from skvideo.io import vwrite
 
+import vis_encoder
+
 from push_t_env import PushTEnv
 from pih_env import PIHEnv
 from conditional_residual import ConditionalUnet1D
-from push_t_statedataset import *
+# from push_t_statedataset import *
+from image_dataset import *
 
 # parameters
 pred_horizon = 16
@@ -40,7 +43,7 @@ action_horizon = 8
 #|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p|p| actions predicted: 16
 
 # create dataset from file
-dataset = PushTStateDataset(
+dataset = ImageDataset(
     dataset_path="buffer",
     pred_horizon=pred_horizon,
     obs_horizon=obs_horizon,
@@ -64,10 +67,22 @@ print(f"{type(dataset.normalized_train_data['action'])=}")
 print(f"{len(dataset)=}")
 # visualize data in batch
 batch = next(iter(dataloader))
-print("batch['obs'].shape:", batch['obs'].shape)
+print("batch['image'].shape:", batch['image'].shape)
 print("batch['action'].shape", batch['action'].shape)
 
-obs_dim = 8
+vision_encoder = vis_encoder.get_resnet('resnet18')
+
+# IMPORTANT!
+# replace all BatchNorm with GroupNorm to work with EMA
+# performance will tank if you forget to do this!
+vision_encoder = vis_encoder.replace_bn_with_gn(vision_encoder)
+
+# ResNet18 has output dim of 512
+vision_feature_dim = 512
+# agent_pos is 2 dimensional
+lowdim_obs_dim = 2
+# observation feature has 514 dims in total per step
+obs_dim = vision_feature_dim + lowdim_obs_dim
 action_dim = 2
 
 # create network object
@@ -75,6 +90,13 @@ noise_pred_net = ConditionalUnet1D(
     input_dim=action_dim,
     global_cond_dim=obs_dim*obs_horizon
 )
+
+# the final arch has 2 parts
+nets = nn.ModuleDict({
+    'vision_encoder': vision_encoder,
+    'noise_pred_net': noise_pred_net
+})
+
 
 # example inputs
 noised_action = torch.randn((1, pred_horizon, action_dim))
@@ -109,7 +131,7 @@ noise_scheduler = DDPMScheduler(
 
 # device transfer
 device = torch.device('cuda')
-_ = noise_pred_net.to(device)
+_ = nets.to(device)
 
 
 num_epochs = 100
@@ -118,13 +140,13 @@ num_epochs = 100
 # accelerates training and improves stability
 # holds a copy of the model weights
 ema = EMAModel(
-    parameters=noise_pred_net.parameters(),
+    parameters=nets.parameters(),
     power=0.75)
 
 # Standard ADAM optimizer
 # Note that EMA parametesr are not optimized
 optimizer = torch.optim.AdamW(
-    params=noise_pred_net.parameters(),
+    params=nets.parameters(),
     lr=1e-4, weight_decay=1e-6)
 
 # Cosine LR schedule with linear warmup
@@ -144,15 +166,22 @@ with tqdm(range(num_epochs), desc='Epoch') as tglobal:
             for nbatch in tepoch:
                 # data normalized in dataset
                 # device transfer
-                nobs = nbatch['obs'].to(device)
+                nimage = nbatch['image'][:,:obs_horizon].to(device)
+                nagent_pos = nbatch['agent_pos'][:,:obs_horizon].to(device)
                 naction = nbatch['action'].to(device)
-                B = nobs.shape[0]
+                B = nagent_pos.shape[0]
 
-                # observation as FiLM conditioning
-                # (B, obs_horizon, obs_dim)
-                obs_cond = nobs[:,:obs_horizon,:]
+                # encoder vision features
+                image_features = nets['vision_encoder'](
+                    nimage.flatten(end_dim=1))
+                image_features = image_features.reshape(
+                    *nimage.shape[:2],-1)
+                # (B,obs_horizon,D)
+
+                # concatenate vision feature and low-dim obs
+                obs_features = torch.cat([image_features, nagent_pos], dim=-1)
+                obs_cond = obs_features.flatten(start_dim=1)
                 # (B, obs_horizon * obs_dim)
-                obs_cond = obs_cond.flatten(start_dim=1)
 
                 # sample noise to add to actions
                 noise = torch.randn(naction.shape, device=device)
@@ -184,7 +213,7 @@ with tqdm(range(num_epochs), desc='Epoch') as tglobal:
                 lr_scheduler.step()
 
                 # update Exponential Moving Average of the model weights
-                ema.step(noise_pred_net.parameters())
+                ema.step(nets.parameters())
 
                 # logging
                 loss_cpu = loss.item()
@@ -194,8 +223,8 @@ with tqdm(range(num_epochs), desc='Epoch') as tglobal:
 
 # Weights of the EMA model
 # is used for inference
-ema_noise_pred_net = noise_pred_net
-ema.copy_to(ema_noise_pred_net.parameters())
+ema_nets = nets
+ema.copy_to(ema_nets.parameters())
 
 load_pretrained = False
 if load_pretrained:
@@ -213,11 +242,13 @@ else:
 
 
 
+#@markdown ### **Inference**
+
 # limit enviornment interaction to 200 steps before termination
-max_steps = 400
+max_steps = 200
 env = PIHEnv()
 # use a seed >200 to avoid initial states seen in the training dataset
-env.seed(100001)
+env.seed(100000)
 
 # get first observation
 obs, info = env.reset()
@@ -231,20 +262,35 @@ rewards = list()
 done = False
 step_idx = 0
 
-with tqdm(total=max_steps, desc="Eval PushTStateEnv") as pbar:
+with tqdm(total=max_steps, desc="Eval PushTImageEnv") as pbar:
     while not done:
         B = 1
-        # stack the last obs_horizon (2) number of observations
-        obs_seq = np.stack(obs_deque)
+        # stack the last obs_horizon number of observations
+        images = np.stack([x['image'] for x in obs_deque])
+        agent_poses = np.stack([x['agent_pos'] for x in obs_deque])
+
         # normalize observation
-        nobs = normalize_data(obs_seq, stats=stats['obs'])
+        nagent_poses = normalize_data(agent_poses, stats=stats['agent_pos'])
+        # images are already normalized to [0,1]
+        nimages = images
+
         # device transfer
-        nobs = torch.from_numpy(nobs).to(device, dtype=torch.float32)
+        nimages = torch.from_numpy(nimages).to(device, dtype=torch.float32)
+        # (2,3,96,96)
+        nagent_poses = torch.from_numpy(nagent_poses).to(device, dtype=torch.float32)
+        # (2,2)
 
         # infer action
         with torch.no_grad():
+            # get image features
+            image_features = ema_nets['vision_encoder'](nimages)
+            # (2,512)
+
+            # concat with low-dim observations
+            obs_features = torch.cat([image_features, nagent_poses], dim=-1)
+
             # reshape observation to (B,obs_horizon*obs_dim)
-            obs_cond = nobs.unsqueeze(0).flatten(start_dim=1)
+            obs_cond = obs_features.unsqueeze(0).flatten(start_dim=1)
 
             # initialize action from Guassian noise
             noisy_action = torch.randn(
@@ -256,7 +302,7 @@ with tqdm(total=max_steps, desc="Eval PushTStateEnv") as pbar:
 
             for k in noise_scheduler.timesteps:
                 # predict noise
-                noise_pred = ema_noise_pred_net(
+                noise_pred = ema_nets['noise_pred_net'](
                     sample=naction,
                     timestep=k,
                     global_cond=obs_cond
@@ -303,5 +349,6 @@ with tqdm(total=max_steps, desc="Eval PushTStateEnv") as pbar:
 
 # print out the maximum target coverage
 print('Score: ', max(rewards))
-vwrite("vis.mp4", imgs)
 
+# visualize
+vwrite('vis.mp4', imgs)

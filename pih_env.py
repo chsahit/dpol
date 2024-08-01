@@ -123,7 +123,7 @@ class PIHEnv(gym.Env):
                 ])
         self._set_state(state)
 
-        obs = self._get_obs()
+        obs = self._get_img_obs()
         info = self._get_info()
         return obs, info
 
@@ -156,7 +156,7 @@ class PIHEnv(gym.Env):
         terminated = done
         truncated = done
 
-        observation = self._get_obs()
+        observation = self._get_img_obs()
         info = self._get_info()
 
         return observation, reward, terminated, truncated, info
@@ -183,6 +183,18 @@ class PIHEnv(gym.Env):
             + tuple(self.hole.position) \
             + (self.hole.angle % (2 * np.pi),))
         return obs
+
+    def _get_img_obs(self):
+        img = self._render_frame(mode='rgb_array')
+
+        agent_pos = np.array(self.agent.position)
+        img_obs = np.moveaxis(img.astype(np.float32) / 255, -1, 0)
+        obs = {
+            'image': img_obs,
+            'agent_pos': agent_pos
+        }
+        return obs
+
 
     def _get_goal_pose_body(self, pose):
         mass = 1
