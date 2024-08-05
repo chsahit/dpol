@@ -89,8 +89,9 @@ class ImageDataset(torch.utils.data.Dataset):
 
         # float32, [0,1], (N,96,96,3)
         train_image_data = dataset_root['data']['img'][:].astype(np.float32)
-        # train_image_data = np.moveaxis(train_image_data, -1,1)
+
         train_image_data = np.moveaxis(train_image_data / 255, -1,1)
+        breakpoint()
         # (N,3,96,96)
 
         # (N, D)

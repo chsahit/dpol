@@ -134,7 +134,7 @@ device = torch.device('cuda')
 _ = nets.to(device)
 
 
-num_epochs = 100
+num_epochs = 1
 
 # Exponential Moving Average
 # accelerates training and improves stability
@@ -245,7 +245,7 @@ else:
 #@markdown ### **Inference**
 
 # limit enviornment interaction to 200 steps before termination
-max_steps = 200
+max_steps = 400
 env = PIHEnv()
 # use a seed >200 to avoid initial states seen in the training dataset
 env.seed(100000)
