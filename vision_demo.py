@@ -44,7 +44,7 @@ action_horizon = 8
 
 # create dataset from file
 dataset = ImageDataset(
-    dataset_path="buffer",
+    dataset_path="b2",
     pred_horizon=pred_horizon,
     obs_horizon=obs_horizon,
     action_horizon=action_horizon
@@ -67,6 +67,7 @@ print(f"{type(dataset.normalized_train_data['action'])=}")
 print(f"{len(dataset)=}")
 # visualize data in batch
 batch = next(iter(dataloader))
+breakpoint()
 print("batch['image'].shape:", batch['image'].shape)
 print("batch['action'].shape", batch['action'].shape)
 

@@ -4,6 +4,7 @@ from replay_buffer import ReplayBuffer
 # from diffusion_policy.env.pusht.pusht_keypoints_env import PushTKeypointsEnv
 import pygame
 from pih_env import PIHEnv
+from pih_img_env import PIHImgEnv
 
 @click.command()
 @click.option('-o', '--output', required=True)
@@ -32,7 +33,7 @@ def main(output, render_size, control_hz):
     kp_kwargs = PushTKeypointsEnv.genenerate_keypoint_manager_params()
     env = PushTKeypointsEnv(render_size=render_size, render_action=False, **kp_kwargs)
     """
-    env = PIHEnv()
+    env = PIHImgEnv()
     agent = env.teleop_agent()
     clock = pygame.time.Clock()
 
@@ -98,8 +99,8 @@ def main(output, render_size, control_hz):
                     pass
                 else:
                     data = {
-                        'img': img,
-                        'state': np.float32(obs),
+                        'img': obs['image'],
+                        'state': obs['agent_pos'],
                         'keypoint': np.float32(keypoint),
                         'action': np.float32(act),
                         'n_contacts': np.float32([info['n_contacts']])
@@ -112,7 +113,6 @@ def main(output, render_size, control_hz):
                 print("0 step episode?")
                 done = False
             img = env.render(mode='human')
-
             # regulate control frequency
             clock.tick(control_hz)
         if not retry:
