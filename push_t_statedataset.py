@@ -79,7 +79,7 @@ def unnormalize_data(ndata, stats):
 # dataset
 class PushTStateDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_path,
-                 pred_horizon, obs_horizon, action_horizon):
+                 pred_horizon, obs_horizon, action_horizon, num_demos):
 
         # read from zarr dataset
         dataset_root = zarr.open(dataset_path, 'r')

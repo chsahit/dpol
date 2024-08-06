@@ -134,7 +134,7 @@ device = torch.device('cuda')
 _ = nets.to(device)
 
 
-num_epochs = 1
+num_epochs = 100
 
 # Exponential Moving Average
 # accelerates training and improves stability

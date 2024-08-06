@@ -51,7 +51,8 @@ class PIHEnv(gym.Env):
             block_cog=None, damping=None,
             render_action=True,
             render_size=96,
-            reset_to_state=None
+            reset_to_state=None,
+            image_obs=False
         ):
         self._seed = None
         self.seed()
@@ -60,6 +61,7 @@ class PIHEnv(gym.Env):
         self.sim_hz = 100
         self.corners = None
         self.corner_contact = False
+        self.image_obs = image_obs
         # Local controller params.
         self.k_p, self.k_v = 100, 20    # PD control.z
         self.control_hz = self.metadata['video.frames_per_second']
@@ -122,8 +124,10 @@ class PIHEnv(gym.Env):
                 rs.randn() * 2 * np.pi - np.pi
                 ])
         self._set_state(state)
-
-        obs = self._get_img_obs()
+        if self.image_obs:
+            obs = self._get_img_obs()
+        else:
+            obs = self._get_obs()
         info = self._get_info()
         return obs, info
 
@@ -156,7 +160,10 @@ class PIHEnv(gym.Env):
         terminated = done
         truncated = done
 
-        observation = self._get_img_obs()
+        if self.image_obs:
+            observation = self._get_img_obs()
+        else:
+            observation = self._get_obs()
         info = self._get_info()
 
         return observation, reward, terminated, truncated, info

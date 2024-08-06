@@ -82,7 +82,8 @@ class ImageDataset(torch.utils.data.Dataset):
                  dataset_path: str,
                  pred_horizon: int,
                  obs_horizon: int,
-                 action_horizon: int):
+                 action_horizon: int,
+                 num_demos: int):
 
         # read from zarr dataset
         dataset_root = zarr.open(dataset_path, 'r')
@@ -91,7 +92,6 @@ class ImageDataset(torch.utils.data.Dataset):
         train_image_data = dataset_root['data']['img'][:].astype(np.float32)
 
         train_image_data = np.moveaxis(train_image_data / 255, -1,1)
-        breakpoint()
         # (N,3,96,96)
 
         # (N, D)
