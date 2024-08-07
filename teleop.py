@@ -56,6 +56,7 @@ def main(output, render_size, control_hz):
         pause = False
         done = False
         plan_idx = 0
+        b_vel = np.array([0, 0, 0], dtype=np.float32)
         pygame.display.set_caption(f'plan_idx:{plan_idx}')
         # step-level while loop
         while not done:
@@ -108,6 +109,8 @@ def main(output, render_size, control_hz):
 
             # step env and render
             obs, reward, done, _, info = env.step(act)
+            b_vel = np.array([env.block.velocity.x, env.block.velocity.y, env.block.angular_velocity])
+            episode[-1]["b_vel"] = b_vel
             if len(episode) == 0 and done:
                 print("0 step episode?")
                 done = False
