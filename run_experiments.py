@@ -1,44 +1,22 @@
 import collections
-import math
-import os
-from typing import Dict, Optional, Sequence, Tuple, Union
-
-import cv2
-import gdown
 
 # env import
-import gym
 import numpy as np
-import pygame
-import pymunk
-import pymunk.pygame_util
-import shapely.geometry as sg
-import skimage.transform as st
 import torch
-import torch.nn as nn
-import zarr
-from diffusers.optimization import get_scheduler
-from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
-from diffusers.training_utils import EMAModel
-from gym import spaces
-from pymunk.space_debug_draw_options import SpaceDebugColor
-from pymunk.vec2d import Vec2d
 from skvideo.io import vwrite
 from tqdm.auto import tqdm
 
-from conditional_residual import ConditionalUnet1D
+from global_vars import *
 from pih_env import PIHEnv
-from push_t_env import PushTEnv
 from push_t_statedataset import *
 from train_policy import train_policy
 
 
-def eval_policy(noise_scheduler, ema_nets, stats, vision_based: bool, seed: int = 100000) -> bool:
-    device = torch.device('cuda')
+def eval_policy(
+    noise_scheduler, ema_nets, stats, vision_based: bool, seed: int = 100000
+) -> bool:
+    device = torch.device("cuda")
     max_steps = 400
-    obs_horizon = 2
-    pred_horizon = 16
-    action_horizon = 8
     action_dim = 2
     num_diffusion_iters = 100
     env = PIHEnv(image_obs=vision_based)
@@ -77,7 +55,7 @@ def eval_policy(noise_scheduler, ema_nets, stats, vision_based: bool, seed: int 
             # infer action
             with torch.no_grad():
                 if vision_based:
-                    image_features = ema_nets['vision_encoder'](nimages)
+                    image_features = ema_nets["vision_encoder"](nimages)
                     obs_features = torch.cat([image_features, nagent_poses], dim=-1)
                     obs_cond = obs_features.unsqueeze(0).flatten(start_dim=1)
                 else:
@@ -93,12 +71,10 @@ def eval_policy(noise_scheduler, ema_nets, stats, vision_based: bool, seed: int 
                 for k in noise_scheduler.timesteps:
                     # predict noise
                     if vision_based:
-                        f = ema_nets['noise_pred_net']
+                        f = ema_nets["noise_pred_net"]
                     else:
                         f = ema_nets
-                    noise_pred = f(
-                        sample=naction, timestep=k, global_cond=obs_cond
-                    )
+                    noise_pred = f(sample=naction, timestep=k, global_cond=obs_cond)
 
                     # inverse diffusion step (remove noise)
                     naction = noise_scheduler.step(
@@ -136,7 +112,7 @@ def eval_policy(noise_scheduler, ema_nets, stats, vision_based: bool, seed: int 
                     done = True
                 if done:
                     break
-    vwrite('vis.mp4', imgs)
+    vwrite("vis.mp4", imgs)
     if step_idx < max_steps - 1:
         return True
     else:
@@ -149,7 +125,7 @@ def experiments(num_demos: int, vision_based: bool, num_experiments: int):
     )
     seed0 = 100000
     score = 0
-    for i in range(num_experiments):
+    for i in tqdm(range(num_experiments), desc="Eval"):
         score += eval_policy(
             noise_scheduler=noise_scheduler,
             ema_nets=ema_nets,
@@ -162,8 +138,8 @@ def experiments(num_demos: int, vision_based: bool, num_experiments: int):
 
 def sweep():
     results = dict()
-    for vis in [True, False]:
-        result = experiments(num_demos=200, vision_based=vis, num_experiments=1)
+    for vis in [False, True]:
+        result = experiments(num_demos=200, vision_based=vis, num_experiments=50)
         results[str(vis)] = result
     for k, v in results.items():
         print(f"vision={k}, sr={v}")
