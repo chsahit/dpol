@@ -86,9 +86,9 @@ class PushTStateDataset(torch.utils.data.Dataset):
         # All demonstration episodes are concatinated in the first dimension N
         train_data = {
             # (N, action_dim)
-            'action': dataset_root['data']['action'][:],
+            'action': dataset_root['data']['b_vel'][:],
             # (N, obs_dim)
-            'obs': dataset_root['data']['state'][:]
+            'obs': dataset_root['data']['state'][:, 2:]
         }
         # Marks one-past the last index for each episode
         episode_ends = dataset_root['meta']['episode_ends'][:]

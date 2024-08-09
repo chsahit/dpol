@@ -16,14 +16,14 @@ from image_dataset import ImageDataset
 from push_t_statedataset import PushTStateDataset
 
 
-def train_policy(num_demos: int, vision_based: bool):
+def train_policy(num_demos: int, vision_based: bool, agent: str):
     if vision_based:
         dataset_cls = ImageDataset
     else:
         dataset_cls = PushTStateDataset
 
     dataset = dataset_cls(
-        dataset_path="buffer",
+        dataset_path="vel_buffer",
         pred_horizon=pred_horizon,
         obs_horizon=obs_horizon,
         action_horizon=action_horizon,
@@ -43,7 +43,7 @@ def train_policy(num_demos: int, vision_based: bool):
         # don't kill worker process afte each epoch
         persistent_workers=True,
     )
-    action_dim = 2
+    action_dim = 3
     # ResNet18 has output dim of 512
     vision_feature_dim = 512
     # agent_pos is 2 dimensional
@@ -53,7 +53,7 @@ def train_policy(num_demos: int, vision_based: bool):
     if vision_based:
         obs_dim = vision_feature_dim + lowdim_obs_dim
     else:
-        obs_dim = 8
+        obs_dim = 6
 
     # create network object
     noise_pred_net = ConditionalUnet1D(

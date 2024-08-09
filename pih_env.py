@@ -140,8 +140,13 @@ class PIHEnv(gym.Env):
             for i in range(n_steps):
                 # Step PD control.
                 # self.agent.velocity = self.k_p * (act - self.agent.position)    # P control works too.
-                acceleration = self.k_p * (action - self.agent.position) + self.k_v * (Vec2d(0, 0) - self.agent.velocity)
-                self.agent.velocity += acceleration * dt
+                # acceleration = self.k_p * (action - self.agent.position) + self.k_v * (Vec2d(0, 0) - self.agent.velocity)
+                # self.agent.velocity += acceleration * dt
+
+                linear_acceleration = np.array([100, 100]) * (action[:2] - self.block.velocity)
+                self.block.velocity += (linear_acceleration * dt)
+                rotational_acceleration = 10 * (action[2] - self.block.angular_velocity)
+                self.block.angular_velocity += (rotational_acceleration * dt)
 
                 # Step physics.
                 self.space.step(dt)
@@ -270,9 +275,11 @@ class PIHEnv(gym.Env):
                 coord = (action / 512 * 96).astype(np.int32)
                 marker_size = int(8/96*self.render_size)
                 thickness = int(1/96*self.render_size)
+                """
                 cv2.drawMarker(img, coord,
                     color=(255,0,0), markerType=cv2.MARKER_CROSS,
                     markerSize=marker_size, thickness=thickness)
+                """
         return img
 
 
@@ -393,7 +400,7 @@ class PIHEnv(gym.Env):
     def add_box(self, position, height, width):
         mass = 1
         inertia = pymunk.moment_for_box(mass, (height, width))
-        body = pymunk.Body(mass, inertia)
+        body = pymunk.Body(mass, inertia, body_type=pymunk.Body.KINEMATIC)
         body.position = position
         shape = pymunk.Poly.create_box(body, (height, width))
         shape.color = pygame.Color('LightSlateGray')
