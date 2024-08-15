@@ -29,6 +29,7 @@ def train_policy(num_demos: int, vision_based: bool, agent: str):
         action_horizon=action_horizon,
         num_demos=num_demos,
     )
+    print(f"{len(dataset)=}")
     # save training data statistics (min, max) for each dim
     stats = dataset.stats
 

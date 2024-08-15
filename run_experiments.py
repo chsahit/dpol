@@ -18,7 +18,7 @@ def eval_policy(
     noise_scheduler, ema_nets, stats, vision_based: bool, seed: int = 100000
 ) -> bool:
     device = torch.device("cuda")
-    max_steps = 200
+    max_steps = 400
     action_dim = 3
     num_diffusion_iters = 100
     env = PIHEnv(image_obs=vision_based)
@@ -168,7 +168,7 @@ def sweep():
     results = dict()
     for vis in [False]:
         result = experiments(
-            num_demos=200, vision_based=vis, num_experiments=50, cached=False
+            num_demos=200, vision_based=vis, num_experiments=50, cached=True
         )
         results[str(vis)] = result
     for k, v in results.items():

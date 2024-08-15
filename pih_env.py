@@ -132,12 +132,20 @@ class PIHEnv(gym.Env):
         return obs, info
 
     def do_force_app(self, action):
-        K = np.array([100, 100, 30])
-        B = np.array([0, 0, 0])
+        K = np.array([1000, 1000, 100])
+        B = 2 * np.sqrt(K)
         angle = self.block.angle % (2 * np.pi)
         F_lin = K[:2] * (action[:2] - self.block.position) + B[:2] * (Vec2d(0, 0) - self.block.velocity)
+        F_lin_norm = np.linalg.norm(F_lin)
+        min_F = 1000.0
+        min_T = 10000.0
+        if F_lin_norm < min_F and F_lin_norm > 1e-1:
+            F_lin = (min_F/(F_lin_norm + 1e-3)) * F_lin
         F_rot = K[2] * (action[2] - angle) + B[2] * (-self.block.angular_velocity)
-        self.block.apply_force_at_local_point((F_lin[0], F_lin[1]))
+        if abs(F_rot) < min_T:
+            sgn = 1 if F_rot > 0 else -1
+            F_rot = sgn * min_T
+        self.block.apply_force_at_world_point((F_lin[0], F_lin[1]), self.block.position)
         self.block._set_torque(F_rot)
 
     def step(self, action):
@@ -227,7 +235,7 @@ class PIHEnv(gym.Env):
 
 
     def _get_goal_pose_body(self, pose):
-        mass = 1
+        mass = 5
         inertia = pymunk.moment_for_box(mass, (50, 100))
         body = pymunk.Body(mass, inertia)
         # preserving the legacy assignment order for compatibility
@@ -407,7 +415,8 @@ class PIHEnv(gym.Env):
         return shape
 
     def add_circle(self, position, radius):
-        body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+        inertia =  pymunk.moment_for_circle(0.01, 0, radius)
+        body = pymunk.Body(0.01, inertia, body_type=pymunk.Body.DYNAMIC)
         body.position = position
         body.friction = 1
         shape = pymunk.Circle(body, radius)
@@ -418,7 +427,7 @@ class PIHEnv(gym.Env):
     def add_box(self, position, height, width):
         mass = 1
         inertia = pymunk.moment_for_box(mass, (height, width))
-        body = pymunk.Body(mass, inertia, body_type=pymunk.Body.DYNAMIC)
+        body = pymunk.Body(mass, inertia)
         body.position = position
         shape = pymunk.Poly.create_box(body, (height, width))
         shape.color = pygame.Color('LightSlateGray')
@@ -436,7 +445,7 @@ class PIHEnv(gym.Env):
 
 
     def add_hole(self, position, angle, scale=30, color='LightSlateGray', mask=pymunk.ShapeFilter.ALL_MASKS()):
-        mass = 1
+        mass = 5
         length = 4
         hole_w = 2
         wall_w = 1
