@@ -131,6 +131,15 @@ class PIHEnv(gym.Env):
         info = self._get_info()
         return obs, info
 
+    def do_force_app(self, action):
+        K = np.array([100, 100, 30])
+        B = np.array([0, 0, 0])
+        angle = self.block.angle % (2 * np.pi)
+        F_lin = K[:2] * (action[:2] - self.block.position) + B[:2] * (Vec2d(0, 0) - self.block.velocity)
+        F_rot = K[2] * (action[2] - angle) + B[2] * (-self.block.angular_velocity)
+        self.block.apply_force_at_local_point((F_lin[0], F_lin[1]))
+        self.block._set_torque(F_rot)
+
     def step(self, action):
         dt = 1.0 / self.sim_hz
         self.n_contact_points = 0
@@ -143,11 +152,20 @@ class PIHEnv(gym.Env):
                 # acceleration = self.k_p * (action - self.agent.position) + self.k_v * (Vec2d(0, 0) - self.agent.velocity)
                 # self.agent.velocity += acceleration * dt
 
+                """
                 linear_acceleration = np.array([100, 100]) * (action[:2] - self.block.velocity)
                 self.block.velocity += (linear_acceleration * dt)
-                rotational_acceleration = 10 * (action[2] - self.block.angular_velocity)
+                rotational_acceleration = 50 * (action[2] - self.block.angular_velocity)
                 self.block.angular_velocity += (rotational_acceleration * dt)
-
+                """
+                """
+                linear_acceleration = np.array([100, 100]) * (action[:2] - self.block.position) + np.array([20, 20]) * (Vec2d(0, 0) - self.block.velocity)
+                self.block.velocity += (linear_acceleration * dt)
+                angle = self.block.angle % (2 * np.pi)
+                rotational_accel = 50 * (action[2] - angle) + 14 * (-self.block.angular_velocity)
+                self.block.angular_velocity += (rotational_accel * dt)
+                """
+                self.do_force_app(action)
                 # Step physics.
                 self.space.step(dt)
 
@@ -400,7 +418,7 @@ class PIHEnv(gym.Env):
     def add_box(self, position, height, width):
         mass = 1
         inertia = pymunk.moment_for_box(mass, (height, width))
-        body = pymunk.Body(mass, inertia, body_type=pymunk.Body.KINEMATIC)
+        body = pymunk.Body(mass, inertia, body_type=pymunk.Body.DYNAMIC)
         body.position = position
         shape = pymunk.Poly.create_box(body, (height, width))
         shape.color = pygame.Color('LightSlateGray')
@@ -418,7 +436,7 @@ class PIHEnv(gym.Env):
 
 
     def add_hole(self, position, angle, scale=30, color='LightSlateGray', mask=pymunk.ShapeFilter.ALL_MASKS()):
-        mass = 10
+        mass = 1
         length = 4
         hole_w = 2
         wall_w = 1

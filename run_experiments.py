@@ -1,8 +1,10 @@
 import collections
+import pickle
 
 # env import
 import numpy as np
 import torch
+from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from skvideo.io import vwrite
 from tqdm.auto import tqdm
 
@@ -16,7 +18,7 @@ def eval_policy(
     noise_scheduler, ema_nets, stats, vision_based: bool, seed: int = 100000
 ) -> bool:
     device = torch.device("cuda")
-    max_steps = 400
+    max_steps = 200
     action_dim = 3
     num_diffusion_iters = 100
     env = PIHEnv(image_obs=vision_based)
@@ -114,34 +116,60 @@ def eval_policy(
                     done = True
                 if done:
                     break
-    vwrite("vis.mp4", imgs)
+    vwrite(f"videos/vis_{seed}.mp4", imgs)
     if step_idx < max_steps - 1:
         return True
     else:
         return False
 
 
-def experiments(num_demos: int, vision_based: bool, num_experiments: int):
-    noise_scheduler, ema_nets, stats = train_policy(
-        num_demos=num_demos, vision_based=vision_based, agent="block"
-    )
-    seed0 = 100000
-    score = 0
-    for i in tqdm(range(num_experiments), desc="Eval"):
-        score += eval_policy(
-            noise_scheduler=noise_scheduler,
-            ema_nets=ema_nets,
-            stats=stats,
-            vision_based=vision_based,
-            seed=seed0 + i,
+def experiments(
+    num_demos: int, vision_based: bool, num_experiments: int, cached: bool = False
+):
+    if cached:
+        num_diffusion_iters = 100
+        noise_scheduler = DDPMScheduler(
+            num_diffusion_iters,
+            beta_schedule="squaredcos_cap_v2",
+            clip_sample=True,
+            prediction_type="epsilon",
         )
+        ema_nets = torch.load("ema_nets.pt")
+        with open("stats.pkl", "rb") as f:
+            stats = pickle.load(f)
+    else:
+        noise_scheduler, ema_nets, stats = train_policy(
+            num_demos=num_demos, vision_based=vision_based, agent="block"
+        )
+        torch.save(ema_nets, "ema_nets.pt")
+        with open("stats.pkl", "wb") as handle:
+            pickle.dump(stats, handle)
+    curr_seed = 100000
+    score = 0
+    with tqdm(range(num_experiments), desc="Eval") as eval_bar:
+        for exp_num in eval_bar:
+            try:
+                score += eval_policy(
+                    noise_scheduler=noise_scheduler,
+                    ema_nets=ema_nets,
+                    stats=stats,
+                    vision_based=vision_based,
+                    seed=curr_seed,
+                )
+            except Exception as e:
+                print(f"{e=}")
+            curr_seed += 1
+            pf = float(score) / (exp_num + 1.0)
+            eval_bar.set_postfix({"sr": pf})
     return float(score) / float(num_experiments)
 
 
 def sweep():
     results = dict()
     for vis in [False]:
-        result = experiments(num_demos=200, vision_based=vis, num_experiments=50)
+        result = experiments(
+            num_demos=200, vision_based=vis, num_experiments=50, cached=False
+        )
         results[str(vis)] = result
     for k, v in results.items():
         print(f"vision={k}, sr={v}")
@@ -151,12 +179,8 @@ def test():
     noise_scheduler, ema_nets, stats = train_policy(
         num_demos=200, vision_based=False, agent="block"
     )
-    eval_policy(
-        noise_scheduler,
-        ema_nets,
-        stats,
-        False
-    )
+    eval_policy(noise_scheduler, ema_nets, stats, False)
+
 
 if __name__ == "__main__":
     sweep()

@@ -17,3 +17,4 @@ buffer/
 *.zip
 b2/
 vel_buffer/
+*.pt

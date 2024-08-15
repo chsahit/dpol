@@ -7,6 +7,47 @@ import collections
 import zarr
 
 
+def densify_train_data(train_data):
+    print("warning, might need to do this aware of episode ends")
+    i = 0
+    while i < len(train_data["action"]):
+        act = train_data["action"][i]
+        if np.linalg.norm(act) < 1e-4:
+            j = i
+            while j < len(train_data["action"]):
+                j += 1
+                cand_act = train_data["action"][j]
+                if np.linalg.norm(cand_act) > 1e-4:
+                    # print(f"{(i, j)=}, {cand_act=}")
+                    for overwrite_idx in range(i, j):
+                        train_data["action"][overwrite_idx] = cand_act
+                    break
+            i = j - 1
+        i += 1
+
+
+def make_action_data(train_data, episode_ends):
+    print("make dense action dataset")
+    action_data = []
+    for i in range(len(episode_ends)):
+        start_idx = 0
+        if i > 0:
+            start_idx = episode_ends[i - 1]
+        end_idx = episode_ends[i]
+        for t in range(start_idx, end_idx - 1):
+            cand_action = train_data[t][2:5]
+            diff = np.linalg.norm(cand_action - train_data[i][2:5])
+            u = t
+            while diff < 1e-4 and u < end_idx:
+                u += 1
+                cand_action = train_data[u][2:5]
+                diff = np.linalg.norm(cand_action - train_data[i][2:5])
+            action_data.append(cand_action)
+        action_data.append(train_data[end_idx - 1][2:5])
+    assert len(train_data) == len(action_data)
+    return np.array(action_data)
+
+
 def create_sample_indices(
         episode_ends:np.ndarray, sequence_length:int,
         pad_before: int=0, pad_after: int=0):
@@ -84,12 +125,15 @@ class PushTStateDataset(torch.utils.data.Dataset):
         # read from zarr dataset
         dataset_root = zarr.open(dataset_path, 'r')
         # All demonstration episodes are concatinated in the first dimension N
+        # action_list = dataset_root['data']['b_vel'][:]
+        action_list = make_action_data(dataset_root['data']['state'], dataset_root['meta']['episode_ends'][:])
         train_data = {
             # (N, action_dim)
-            'action': dataset_root['data']['b_vel'][:],
+            'action': action_list,
             # (N, obs_dim)
             'obs': dataset_root['data']['state'][:, 2:]
         }
+        # densify_train_data(train_data)
         # Marks one-past the last index for each episode
         episode_ends = dataset_root['meta']['episode_ends'][:]
 
