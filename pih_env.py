@@ -138,7 +138,7 @@ class PIHEnv(gym.Env):
         F_lin = K[:2] * (action[:2] - self.block.position) + B[:2] * (Vec2d(0, 0) - self.block.velocity)
         F_lin_norm = np.linalg.norm(F_lin)
         min_F = 1000.0
-        min_T = 10000.0
+        min_T = 20000.0
         if F_lin_norm < min_F and F_lin_norm > 1e-1:
             F_lin = (min_F/(F_lin_norm + 1e-3)) * F_lin
         F_rot = K[2] * (action[2] - angle) + B[2] * (-self.block.angular_velocity)
