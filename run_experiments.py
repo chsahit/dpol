@@ -19,13 +19,16 @@ def eval_policy(
 ) -> bool:
     device = torch.device("cuda")
     max_steps = 400
-    action_dim = 3
     num_diffusion_iters = 100
     env = PIHEnv(image_obs=vision_based)
     # use a seed >200 to avoid initial states seen in the training dataset
     env.seed(seed)
     obs, info = env.reset()
-    obs = obs[2:]
+    if finger:
+        action_dim = 2
+    else:
+        obs = obs[2:]
+        action_dim = 3
     obs_deque = collections.deque([obs] * obs_horizon, maxlen=obs_horizon)
     # save visualization and rewards
     imgs = [env.render(mode="rgb_array")]
@@ -101,7 +104,8 @@ def eval_policy(
             for i in range(len(action)):
                 # stepping env
                 obs, reward, done, _, info = env.step(action[i])
-                obs = obs[2:]
+                if not finger:
+                    obs = obs[2:]
                 # save observations
                 obs_deque.append(obs)
                 # and reward/vis
@@ -168,7 +172,7 @@ def sweep():
     results = dict()
     for vis in [False]:
         result = experiments(
-            num_demos=200, vision_based=vis, num_experiments=50, cached=True
+            num_demos=200, vision_based=vis, num_experiments=50, cached=False
         )
         results[str(vis)] = result
     for k, v in results.items():

@@ -13,6 +13,7 @@ import cv2
 import skimage.transform as st
 
 from push_t_env import DrawOptions
+import global_vars
 
 # Make increasing values of y point upwards.
 positive_y_is_up: bool = False
@@ -156,24 +157,12 @@ class PIHEnv(gym.Env):
             self.latest_action = action
             for i in range(n_steps):
                 # Step PD control.
-                # self.agent.velocity = self.k_p * (act - self.agent.position)    # P control works too.
-                # acceleration = self.k_p * (action - self.agent.position) + self.k_v * (Vec2d(0, 0) - self.agent.velocity)
-                # self.agent.velocity += acceleration * dt
-
-                """
-                linear_acceleration = np.array([100, 100]) * (action[:2] - self.block.velocity)
-                self.block.velocity += (linear_acceleration * dt)
-                rotational_acceleration = 50 * (action[2] - self.block.angular_velocity)
-                self.block.angular_velocity += (rotational_acceleration * dt)
-                """
-                """
-                linear_acceleration = np.array([100, 100]) * (action[:2] - self.block.position) + np.array([20, 20]) * (Vec2d(0, 0) - self.block.velocity)
-                self.block.velocity += (linear_acceleration * dt)
-                angle = self.block.angle % (2 * np.pi)
-                rotational_accel = 50 * (action[2] - angle) + 14 * (-self.block.angular_velocity)
-                self.block.angular_velocity += (rotational_accel * dt)
-                """
-                self.do_force_app(action)
+                if global_vars.finger:
+                    acceleration = self.k_p * (action - self.agent.position) + \
+                        self.k_v * (Vec2d(0, 0) - self.agent.velocity)
+                    self.agent.velocity += acceleration * dt
+                else:
+                    self.do_force_app(action)
                 # Step physics.
                 self.space.step(dt)
 
@@ -416,7 +405,10 @@ class PIHEnv(gym.Env):
 
     def add_circle(self, position, radius):
         inertia =  pymunk.moment_for_circle(0.01, 0, radius)
-        body = pymunk.Body(0.01, inertia, body_type=pymunk.Body.DYNAMIC)
+        if global_vars.finger:
+            body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+        else:
+            body = pymunk.Body(0.01, inertia, body_type=pymunk.Body.DYNAMIC)
         body.position = position
         body.friction = 1
         shape = pymunk.Circle(body, radius)

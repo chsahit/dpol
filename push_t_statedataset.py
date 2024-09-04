@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import collections
 import zarr
+import global_vars
 
 
 def densify_train_data(train_data):
@@ -126,12 +127,19 @@ class PushTStateDataset(torch.utils.data.Dataset):
         dataset_root = zarr.open(dataset_path, 'r')
         # All demonstration episodes are concatinated in the first dimension N
         # action_list = dataset_root['data']['b_vel'][:]
-        action_list = make_action_data(dataset_root['data']['state'], dataset_root['meta']['episode_ends'][:])
+        if global_vars.finger:
+            action_list = dataset_root['data']['action'][:]
+            obs_td = dataset_root['data']['state'][:]
+        else:
+            action_list = make_action_data(
+                dataset_root['data']['state'], dataset_root['meta']['episode_ends'][:])
+            obs_td = dataset_root['data']['state'][:, 2:]
+
         train_data = {
             # (N, action_dim)
             'action': action_list,
             # (N, obs_dim)
-            'obs': dataset_root['data']['state'][:, 2:]
+            'obs': obs_td
         }
         # densify_train_data(train_data)
         # Marks one-past the last index for each episode
