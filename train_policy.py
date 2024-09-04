@@ -8,6 +8,7 @@ from diffusers.training_utils import EMAModel
 from tqdm.auto import tqdm
 
 import vis_encoder
+import global_vars
 
 # env import
 from conditional_residual import ConditionalUnet1D
@@ -16,19 +17,20 @@ from image_dataset import ImageDataset
 from push_t_statedataset import PushTStateDataset
 
 
-def train_policy(num_demos: int, vision_based: bool):
+def train_policy(num_demos: int, vision_based: bool, agent: str):
     if vision_based:
         dataset_cls = ImageDataset
     else:
         dataset_cls = PushTStateDataset
 
     dataset = dataset_cls(
-        dataset_path="buffer",
+        dataset_path="vel_buffer",
         pred_horizon=pred_horizon,
         obs_horizon=obs_horizon,
         action_horizon=action_horizon,
         num_demos=num_demos,
     )
+    print(f"{len(dataset)=}")
     # save training data statistics (min, max) for each dim
     stats = dataset.stats
 
@@ -43,7 +45,10 @@ def train_policy(num_demos: int, vision_based: bool):
         # don't kill worker process afte each epoch
         persistent_workers=True,
     )
-    action_dim = 2
+    if global_vars.finger:
+        action_dim = 2
+    else:
+        action_dim = 3
     # ResNet18 has output dim of 512
     vision_feature_dim = 512
     # agent_pos is 2 dimensional
@@ -53,7 +58,10 @@ def train_policy(num_demos: int, vision_based: bool):
     if vision_based:
         obs_dim = vision_feature_dim + lowdim_obs_dim
     else:
-        obs_dim = 8
+        if global_vars.finger:
+            obs_dim = 8
+        else:
+            obs_dim = 6
 
     # create network object
     noise_pred_net = ConditionalUnet1D(
@@ -85,7 +93,7 @@ def train_policy(num_demos: int, vision_based: bool):
     device = torch.device("cuda")
     _ = nets.to(device)
 
-    num_epochs = 200
+    num_epochs = 10
 
     ema = EMAModel(parameters=nets.parameters(), power=0.75)
 

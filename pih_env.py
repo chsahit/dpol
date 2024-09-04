@@ -13,6 +13,7 @@ import cv2
 import skimage.transform as st
 
 from push_t_env import DrawOptions
+import global_vars
 
 # Make increasing values of y point upwards.
 positive_y_is_up: bool = False
@@ -131,6 +132,23 @@ class PIHEnv(gym.Env):
         info = self._get_info()
         return obs, info
 
+    def do_force_app(self, action):
+        K = np.array([1000, 1000, 100])
+        B = 2 * np.sqrt(K)
+        angle = self.block.angle % (2 * np.pi)
+        F_lin = K[:2] * (action[:2] - self.block.position) + B[:2] * (Vec2d(0, 0) - self.block.velocity)
+        F_lin_norm = np.linalg.norm(F_lin)
+        min_F = 1000.0
+        min_T = 20000.0
+        if F_lin_norm < min_F and F_lin_norm > 1e-1:
+            F_lin = (min_F/(F_lin_norm + 1e-3)) * F_lin
+        F_rot = K[2] * (action[2] - angle) + B[2] * (-self.block.angular_velocity)
+        if abs(F_rot) < min_T:
+            sgn = 1 if F_rot > 0 else -1
+            F_rot = sgn * min_T
+        self.block.apply_force_at_world_point((F_lin[0], F_lin[1]), self.block.position)
+        self.block._set_torque(F_rot)
+
     def step(self, action):
         dt = 1.0 / self.sim_hz
         self.n_contact_points = 0
@@ -139,10 +157,12 @@ class PIHEnv(gym.Env):
             self.latest_action = action
             for i in range(n_steps):
                 # Step PD control.
-                # self.agent.velocity = self.k_p * (act - self.agent.position)    # P control works too.
-                acceleration = self.k_p * (action - self.agent.position) + self.k_v * (Vec2d(0, 0) - self.agent.velocity)
-                self.agent.velocity += acceleration * dt
-
+                if global_vars.finger:
+                    acceleration = self.k_p * (action - self.agent.position) + \
+                        self.k_v * (Vec2d(0, 0) - self.agent.velocity)
+                    self.agent.velocity += acceleration * dt
+                else:
+                    self.do_force_app(action)
                 # Step physics.
                 self.space.step(dt)
 
@@ -204,7 +224,7 @@ class PIHEnv(gym.Env):
 
 
     def _get_goal_pose_body(self, pose):
-        mass = 1
+        mass = 5
         inertia = pymunk.moment_for_box(mass, (50, 100))
         body = pymunk.Body(mass, inertia)
         # preserving the legacy assignment order for compatibility
@@ -270,9 +290,11 @@ class PIHEnv(gym.Env):
                 coord = (action / 512 * 96).astype(np.int32)
                 marker_size = int(8/96*self.render_size)
                 thickness = int(1/96*self.render_size)
+                """
                 cv2.drawMarker(img, coord,
                     color=(255,0,0), markerType=cv2.MARKER_CROSS,
                     markerSize=marker_size, thickness=thickness)
+                """
         return img
 
 
@@ -382,7 +404,11 @@ class PIHEnv(gym.Env):
         return shape
 
     def add_circle(self, position, radius):
-        body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+        inertia =  pymunk.moment_for_circle(0.01, 0, radius)
+        if global_vars.finger:
+            body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+        else:
+            body = pymunk.Body(0.01, inertia, body_type=pymunk.Body.DYNAMIC)
         body.position = position
         body.friction = 1
         shape = pymunk.Circle(body, radius)
@@ -411,7 +437,7 @@ class PIHEnv(gym.Env):
 
 
     def add_hole(self, position, angle, scale=30, color='LightSlateGray', mask=pymunk.ShapeFilter.ALL_MASKS()):
-        mass = 10
+        mass = 5
         length = 4
         hole_w = 2
         wall_w = 1
